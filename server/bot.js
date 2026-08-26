@@ -25,7 +25,6 @@ function iniciarBot() {
   const bot = new TelegramBot(token, { polling: true });
   console.log("[bot] Telegram bot iniciado (long polling).");
 
-  bot.on("polling_error", (err) => { console.error("[bot] polling_error:", err.code, err.message); }); bot.on("webhook_error", (err) => { console.error("[bot] webhook_error:", err.code, err.message); }); bot.on("error", (err) => { console.error("[bot] error:", err.code, err.message); });
 
   const idsPermitidos = (process.env.TELEGRAM_ALLOWED_IDS || "")
     .split(",")
