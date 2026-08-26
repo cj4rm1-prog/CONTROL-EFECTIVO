@@ -123,6 +123,47 @@ html, body {
 .btn-primary:hover { filter: brightness(1.08); }
 .btn-full { width: 100%; margin-top: 8px; }
 
+/* ---------- Barra de estado de caja ---------- */
+.caja-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--ink-2);
+  border: 1px solid rgba(201, 162, 39, 0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.caja-info { color: var(--paper); }
+.caja-info code {
+  background: rgba(255,255,255,0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+}
+#selector-caja {
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* ---------- Banner de error ---------- */
+.error-banner {
+  background: rgba(217, 85, 60, 0.15);
+  border: 1px solid var(--coral);
+  color: #f3c9c0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
 /* ---------- Recibo de KPIs ---------- */
 .receipt {
   position: relative;

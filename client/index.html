@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Libro Mayor — Control de gastos</title>
+<title>Caja Chica — Control de gastos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -14,7 +14,7 @@
 <div id="gate" class="gate">
   <div class="gate-card">
     <div class="gate-mark">◈</div>
-    <h1>Libro Mayor</h1>
+    <h1>Caja Chica</h1>
     <p>Ingresa la clave del panel para continuar.</p>
     <input id="gate-input" type="password" placeholder="Clave de acceso" autocomplete="off" />
     <button id="gate-btn">Entrar</button>
@@ -28,7 +28,7 @@
     <div class="brand">
       <span class="brand-mark">◈</span>
       <div>
-        <div class="brand-title">Libro Mayor</div>
+        <div class="brand-title">Caja Chica</div>
         <div class="brand-sub">Control de gastos</div>
       </div>
     </div>
@@ -43,12 +43,23 @@
     <button id="btn-nuevo" class="btn-primary">+ Nuevo movimiento</button>
   </header>
 
+  <!-- Estado de la caja: cuál se está viendo -->
+  <section class="caja-bar" id="caja-bar">
+    <div class="caja-info" id="caja-info">Cargando estado de caja…</div>
+    <select id="selector-caja">
+      <option value="abierta">Caja abierta actual</option>
+      <option value="todas">Todas las cajas (histórico)</option>
+    </select>
+  </section>
+
+  <div id="error-banner" class="error-banner hidden"></div>
+
   <main class="layout">
 
     <!-- Cinta tipo recibo: saldo actual -->
     <section class="receipt" id="receipt">
       <div class="receipt-row receipt-head">
-        <span>SALDO ACTUAL</span>
+        <span id="receipt-title">SALDO DE LA CAJA</span>
         <span id="receipt-period">—</span>
       </div>
       <div class="receipt-row receipt-total">

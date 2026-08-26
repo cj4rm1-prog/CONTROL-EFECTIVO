@@ -1,23 +1,30 @@
-# Libro Mayor — Control de gastos con registro por Telegram
+# Caja Chica — Control de gastos con registro por Telegram
 
-Panel de control de gastos personal/familiar: registras **saldo** (dinero que
-ingresa) y **gastos** por tipo de dinero (efectivo / tarjeta / transferencia)
-y categoría de consumo (Alimentación, Salud, Transporte, etc.), alimentado
-desde un bot de Telegram. El dashboard muestra el **saldo actual** disponible
-(total y por tipo de dinero), todos los movimientos por día y por semana, y
-el gasto por categoría. Un solo servicio en Render sirve el dashboard web
-**y** corre el bot; los datos viven en una base de datos SQLite gratuita en
-la nube (Turso).
+Panel de control de caja chica: **abres una caja** con un saldo inicial,
+registras **ingresos de saldo** y **gastos** por tipo de dinero (efectivo /
+tarjeta / transferencia) y categoría de consumo, y **cierras la caja** cuando
+terminas — todo desde Telegram. El dashboard muestra el saldo de la caja
+abierta (sin mezclarse con cajas ya cerradas), los movimientos por día y por
+semana, y el gasto por categoría. También puedes revisar el histórico de
+cajas cerradas por separado. Un solo servicio en Render sirve el dashboard
+web **y** corre el bot; los datos viven en una base de datos SQLite gratuita
+en la nube (Turso).
 
-## Cómo funciona el saldo
+## Cómo funciona el sistema de cajas
 
-- **Ingresar saldo**: registra dinero que entra (ej. tu sueldo, una recarga)
-  eligiendo el tipo de dinero (efectivo/tarjeta/transferencia).
-- **Registrar gasto**: registra dinero que sale, eligiendo tipo de dinero y
-  categoría de consumo.
-- El **saldo actual** = total de saldo ingresado − total gastado (siempre
-  histórico, sin importar el filtro de fechas que estés viendo). También se
-  muestra el saldo desglosado por cada tipo de dinero.
+- **`/abrircaja`**: abre una caja nueva con un saldo inicial y un tipo de
+  dinero. Solo puede haber **una caja abierta a la vez** (la base de datos lo
+  garantiza).
+- **`/nuevo`**: registra un ingreso de saldo o un gasto, siempre dentro de la
+  caja que esté abierta en ese momento. Si no hay ninguna caja abierta, el
+  bot te lo avisa y no deja registrar nada hasta que abras una.
+- **`/cerrarcaja`**: calcula el saldo final (saldo inicial + ingresos −
+  gastos) y cierra la caja. Sus movimientos quedan guardados en el
+  histórico, pero **dejan de contar** para el saldo actual.
+- El **dashboard**, por defecto, muestra solo la caja abierta — así el saldo
+  actual nunca se mezcla con dinero ya cerrado/contabilizado. Arriba a la
+  derecha puedes cambiar a "Todas las cajas" para ver el histórico completo,
+  o elegir una caja cerrada específica del listado.
 
 ## Arquitectura
 
@@ -82,18 +89,21 @@ que configuraste y ya tienes el dashboard.
 
 ## 4. Probar
 
-- En Telegram, escríbele a tu bot `/nuevo` y sigue los botones:
-  💰 Ingresar saldo o 🧾 Registrar gasto → tipo de dinero → (si es gasto,
-  categoría) → monto → descripción.
-- Usa `/saldo` para ver el saldo actual al instante, o `/resumen` para un
-  resumen del mes.
-- Abre el dashboard web: verás el movimiento reflejado al refrescar
-  (filtra por Hoy / 7 días / Este mes / Todo, y por tipo de dinero o
-  categoría). El gráfico de "Gasto en el tiempo" se puede alternar entre
+- En Telegram, escríbele a tu bot `/abrircaja` primero: dale un monto
+  inicial y elige el tipo de dinero. Sin una caja abierta, no se pueden
+  registrar movimientos.
+- Luego usa `/nuevo` para registrar 💰 Ingresar saldo o 🧾 Registrar gasto:
+  tipo de dinero → (si es gasto, categoría) → monto → descripción.
+- Usa `/saldo` para ver el saldo de la caja abierta al instante, `/resumen`
+  para un resumen completo, y `/cerrarcaja` cuando termines para cerrarla
+  (te muestra el saldo final calculado y pide confirmación).
+- Abre el dashboard web: por defecto muestra la caja abierta actual (filtra
+  por Hoy / 7 días / Este mes / Todo, por tipo de dinero o categoría). Arriba
+  puedes cambiar a "Todas las cajas" o a una caja cerrada específica del
+  histórico. El gráfico de "Gasto en el tiempo" se puede alternar entre
   vista por día y por semana.
 - Desde el dashboard también puedes pulsar **"+ Nuevo movimiento"** para
-  cargar algo manualmente (por ejemplo, movimientos históricos o el saldo
-  inicial con el que arrancas).
+  cargar algo manualmente (requiere que haya una caja abierta).
 
 ## 5. Desarrollo local
 

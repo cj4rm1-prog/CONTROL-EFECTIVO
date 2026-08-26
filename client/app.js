@@ -4,6 +4,7 @@ const state = {
   filtroMedio: "",
   filtroCategoria: "",
   modoTiempo: "dia",
+  vistaCaja: "abierta", // "abierta" | "todas" | id numérico de una caja cerrada
   apiKey: localStorage.getItem("dashboard_key") || "",
   categorias: { gasto: [] },
 };
@@ -17,14 +18,35 @@ function apiHeaders() {
 }
 
 async function apiFetch(path, options = {}) {
-  const res = await fetch(`/api${path}`, {
-    ...options,
-    headers: { ...apiHeaders(), ...(options.headers || {}) },
-  });
+  let res;
+  try {
+    res = await fetch(`/api${path}`, {
+      ...options,
+      headers: { ...apiHeaders(), ...(options.headers || {}) },
+    });
+  } catch (networkErr) {
+    throw new Error("No se pudo conectar con el servidor. Revisa tu conexión.");
+  }
   if (res.status === 401) throw new Error("UNAUTHORIZED");
-  if (!res.ok) throw new Error(`Error ${res.status}`);
+  if (!res.ok) {
+    let detalle = "";
+    try {
+      const body = await res.json();
+      detalle = body.error || "";
+    } catch (_) {}
+    throw new Error(detalle || `Error ${res.status} al consultar ${path}`);
+  }
   if (res.status === 204) return null;
   return res.json();
+}
+
+function mostrarError(mensaje) {
+  const banner = document.getElementById("error-banner");
+  banner.textContent = "⚠️ " + mensaje;
+  banner.classList.remove("hidden");
+}
+function ocultarError() {
+  document.getElementById("error-banner").classList.add("hidden");
 }
 
 function rangoFechas(range) {
@@ -47,42 +69,106 @@ function money(n) {
   return "$" + Number(n || 0).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function fechaCorta(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("es-EC", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 function labelRange(range) {
   return { hoy: "Hoy", semana: "Últimos 7 días", mes: "Este mes", todo: "Histórico completo" }[range];
 }
 
 // ---------- Carga y render ----------
 async function cargarTodo() {
-  const { desde, hasta } = rangoFechas(state.range);
-  const params = new URLSearchParams();
-  if (desde) params.set("desde", desde);
-  if (hasta) params.set("hasta", hasta);
-  if (state.filtroTipo) params.set("tipo", state.filtroTipo);
-  if (state.filtroMedio) params.set("medio_pago", state.filtroMedio);
-  if (state.filtroCategoria) params.set("categoria", state.filtroCategoria);
+  ocultarError();
+  try {
+    const { desde, hasta } = rangoFechas(state.range);
+    const params = new URLSearchParams();
+    if (desde) params.set("desde", desde);
+    if (hasta) params.set("hasta", hasta);
+    if (state.filtroTipo) params.set("tipo", state.filtroTipo);
+    if (state.filtroMedio) params.set("medio_pago", state.filtroMedio);
+    if (state.filtroCategoria) params.set("categoria", state.filtroCategoria);
+    params.set("caja", state.vistaCaja);
 
-  const [resumen, movimientos] = await Promise.all([
-    apiFetch(`/resumen?${params.toString()}`),
-    apiFetch(`/movimientos?${params.toString()}`),
-  ]);
+    const [resumen, movimientosResp] = await Promise.all([
+      apiFetch(`/resumen?${params.toString()}`),
+      apiFetch(`/movimientos?${params.toString()}`),
+    ]);
 
-  document.getElementById("receipt-period").textContent = labelRange(state.range);
-  document.getElementById("kpi-saldo").textContent = money(resumen.saldoTotal);
-  document.getElementById("saldo-efectivo").textContent = money(resumen.saldoPorMedio.efectivo);
-  document.getElementById("saldo-tarjeta").textContent = money(resumen.saldoPorMedio.tarjeta);
-  document.getElementById("saldo-transferencia").textContent = money(resumen.saldoPorMedio.transferencia);
-  document.getElementById("kpi-ingresado").textContent = money(resumen.ingresosRango);
-  document.getElementById("kpi-gastado").textContent = money(resumen.gastosRango);
+    renderCajaBar(resumen.caja);
 
-  renderChartCategoria(resumen.porCategoria);
-  renderChartTiempo(resumen);
-  renderTabla(movimientos);
+    document.getElementById("receipt-period").textContent = labelRange(state.range);
+    document.getElementById("receipt-title").textContent =
+      state.vistaCaja === "todas" ? "SALDO — TODAS LAS CAJAS" : "SALDO DE LA CAJA";
+    document.getElementById("kpi-saldo").textContent = money(resumen.saldoTotal);
+    document.getElementById("saldo-efectivo").textContent = money(resumen.saldoPorMedio.efectivo);
+    document.getElementById("saldo-tarjeta").textContent = money(resumen.saldoPorMedio.tarjeta);
+    document.getElementById("saldo-transferencia").textContent = money(resumen.saldoPorMedio.transferencia);
+    document.getElementById("kpi-ingresado").textContent = money(resumen.ingresosRango);
+    document.getElementById("kpi-gastado").textContent = money(resumen.gastosRango);
+
+    renderChartCategoria(resumen.porCategoria);
+    renderChartTiempo(resumen);
+    renderTabla(movimientosResp.movimientos);
+  } catch (err) {
+    if (err.message === "UNAUTHORIZED") {
+      volverAlGate();
+      return;
+    }
+    console.error("[dashboard] Error cargando datos:", err);
+    mostrarError(err.message || "Ocurrió un error inesperado cargando el dashboard.");
+    document.getElementById("tabla-body").innerHTML =
+      `<tr><td colspan="8" class="empty">No se pudieron cargar los movimientos.</td></tr>`;
+  }
+}
+
+function renderCajaBar(caja) {
+  const info = document.getElementById("caja-info");
+  if (state.vistaCaja === "todas") {
+    info.textContent = "Viendo el histórico completo de todas las cajas.";
+    return;
+  }
+  if (!caja) {
+    info.innerHTML = `🔒 No hay ninguna caja abierta. Ábrela desde Telegram con <code>/abrircaja</code>.`;
+    return;
+  }
+  const estadoTxt = caja.estado === "abierta" ? "🔓 Caja abierta" : "🔒 Caja cerrada";
+  info.textContent = `${estadoTxt} · desde ${fechaCorta(caja.fecha_apertura)}` +
+    (caja.fecha_cierre ? ` hasta ${fechaCorta(caja.fecha_cierre)}` : "") +
+    ` · saldo inicial ${money(caja.saldo_inicial)}`;
+}
+
+async function cargarSelectorCajas() {
+  try {
+    const cajas = await apiFetch("/cajas");
+    const select = document.getElementById("selector-caja");
+    const cerradas = cajas.filter((c) => c.estado === "cerrada");
+    select.innerHTML =
+      `<option value="abierta">Caja abierta actual</option>` +
+      `<option value="todas">Todas las cajas (histórico)</option>` +
+      cerradas
+        .map(
+          (c) =>
+            `<option value="${c.id}">Caja #${c.id} · ${fechaCorta(c.fecha_apertura)} (cerrada)</option>`
+        )
+        .join("");
+    select.value = state.vistaCaja;
+  } catch (err) {
+    console.error("[dashboard] Error cargando lista de cajas:", err);
+  }
 }
 
 function renderChartCategoria(porCategoria) {
   const filas = [...porCategoria].sort((a, b) => b.total - a.total);
   const ctx = document.getElementById("chart-categoria");
   if (charts.categoria) charts.categoria.destroy();
+
+  if (!filas.length) {
+    charts.categoria = null;
+    ctx.getContext("2d").clearRect(0, 0, ctx.width, ctx.height);
+    return;
+  }
 
   const paletaCategorias = ["#d9553c", "#c9a227", "#3f8fd1", "#8a6fd1", "#2f9e6e", "#e08a3c", "#5aa8a0", "#b06fa0"];
 
@@ -155,7 +241,7 @@ function chartOptions({ horizontal = false, legend = true } = {}) {
 
 function renderTabla(movimientos) {
   const tbody = document.getElementById("tabla-body");
-  if (!movimientos.length) {
+  if (!movimientos || !movimientos.length) {
     tbody.innerHTML = `<tr><td colspan="8" class="empty">No hay movimientos en este periodo.</td></tr>`;
     return;
   }
@@ -178,8 +264,12 @@ function renderTabla(movimientos) {
   tbody.querySelectorAll(".row-delete").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!confirm("¿Eliminar este movimiento?")) return;
-      await apiFetch(`/movimientos/${btn.dataset.id}`, { method: "DELETE" });
-      cargarTodo();
+      try {
+        await apiFetch(`/movimientos/${btn.dataset.id}`, { method: "DELETE" });
+        cargarTodo();
+      } catch (err) {
+        mostrarError(err.message);
+      }
     });
   });
 }
@@ -200,6 +290,11 @@ document.getElementById("tiempo-tabs").addEventListener("click", (e) => {
   document.querySelectorAll("#tiempo-tabs button").forEach((b) => b.classList.remove("active"));
   btn.classList.add("active");
   state.modoTiempo = btn.dataset.modo;
+  cargarTodo();
+});
+
+document.getElementById("selector-caja").addEventListener("change", (e) => {
+  state.vistaCaja = e.target.value;
   cargarTodo();
 });
 
@@ -280,11 +375,18 @@ form.addEventListener("submit", async (e) => {
     form.reset();
     cargarTodo();
   } catch (err) {
-    errorEl.textContent = "No se pudo guardar. Revisa los datos e intenta de nuevo.";
+    errorEl.textContent = err.message || "No se pudo guardar. Revisa los datos e intenta de nuevo.";
   }
 });
 
 // ---------- Gate de acceso ----------
+function volverAlGate() {
+  localStorage.removeItem("dashboard_key");
+  document.getElementById("app").classList.add("hidden");
+  document.getElementById("gate").classList.remove("hidden");
+  document.getElementById("gate-error").textContent = "Tu clave ya no es válida, intenta de nuevo.";
+}
+
 async function intentarEntrar(key) {
   state.apiKey = key;
   try {
@@ -294,6 +396,7 @@ async function intentarEntrar(key) {
     localStorage.setItem("dashboard_key", key);
     document.getElementById("gate").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
+    await cargarSelectorCajas();
     cargarTodo();
   } catch (err) {
     document.getElementById("gate-error").textContent = "Clave incorrecta, intenta de nuevo.";

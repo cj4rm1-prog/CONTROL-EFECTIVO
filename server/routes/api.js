@@ -1,9 +1,6 @@
 const express = require("express");
-const {
-  db,
-  CATEGORIAS_GASTO,
-  MEDIOS_PAGO,
-} = require("../db");
+const { db, CATEGORIAS_GASTO, MEDIOS_PAGO } = require("../db");
+const { cajaAbierta, saldoDeCaja, abrirCaja, cerrarCaja } = require("../cajas");
 
 const router = express.Router();
 
@@ -18,9 +15,13 @@ router.use((req, res, next) => {
   next();
 });
 
-function buildWhere(query) {
+function buildWhere(query, cajaId) {
   const clauses = [];
   const args = {};
+  if (cajaId !== null && cajaId !== undefined) {
+    clauses.push("caja_id = :caja_id");
+    args.caja_id = cajaId;
+  }
   if (query.desde) {
     clauses.push("fecha >= :desde");
     args.desde = query.desde;
@@ -45,44 +46,108 @@ function buildWhere(query) {
   return { where, args };
 }
 
+// Resuelve qué caja_id usar según el query param `caja`:
+//  - sin parámetro o "abierta" -> la caja abierta actual (o ninguna)
+//  - "todas" -> null (sin filtrar por caja, ve todo el histórico)
+//  - un número -> esa caja específica (cerrada o no)
+async function resolverCaja(query) {
+  if (query.caja === "todas") return { cajaId: null, caja: null };
+  if (query.caja && query.caja !== "abierta") {
+    const idNum = parseInt(query.caja, 10);
+    const r = await db.execute({ sql: `SELECT * FROM cajas WHERE id = :id`, args: { id: idNum } });
+    return { cajaId: idNum, caja: r.rows[0] || null };
+  }
+  const abierta = await cajaAbierta();
+  return { cajaId: abierta ? abierta.id : -1, caja: abierta }; // -1 = ninguna caja coincide nunca
+}
+
+// ---------- Cajas ----------
+
+// GET /api/cajas  -> historial completo (abierta primero, luego cerradas por fecha desc)
+router.get("/cajas", async (req, res) => {
+  try {
+    const result = await db.execute(
+      `SELECT * FROM cajas ORDER BY (estado = 'abierta') DESC, fecha_apertura DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al listar cajas" });
+  }
+});
+
+// GET /api/cajas/abierta -> la caja abierta actual con su saldo, o null
+router.get("/cajas/abierta", async (req, res) => {
+  try {
+    const abierta = await cajaAbierta();
+    if (!abierta) return res.json(null);
+    const info = await saldoDeCaja(abierta.id);
+    res.json({ ...abierta, ingresos: info.ingresos, gastos: info.gastos, saldo: info.saldo });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al consultar la caja abierta" });
+  }
+});
+
+// POST /api/cajas/abrir
+router.post("/cajas/abrir", async (req, res) => {
+  try {
+    const { saldo_inicial, medio_pago, usuario, nota } = req.body;
+    if (medio_pago && !MEDIOS_PAGO.includes(medio_pago)) {
+      return res.status(400).json({ error: "medio_pago inválido" });
+    }
+    const id = await abrirCaja({ saldo_inicial, medio_pago, usuario: usuario || "web", nota });
+    res.status(201).json({ id });
+  } catch (err) {
+    if (err.code === "CAJA_YA_ABIERTA") {
+      return res.status(409).json({ error: "Ya hay una caja abierta", caja: err.caja });
+    }
+    console.error(err);
+    res.status(500).json({ error: "Error al abrir la caja" });
+  }
+});
+
+// POST /api/cajas/:id/cerrar
+router.post("/cajas/:id/cerrar", async (req, res) => {
+  try {
+    const resultado = await cerrarCaja(parseInt(req.params.id, 10), {
+      usuario: req.body.usuario || "web",
+    });
+    res.json(resultado);
+  } catch (err) {
+    if (err.code === "CAJA_NO_ENCONTRADA") return res.status(404).json({ error: err.message });
+    if (err.code === "CAJA_YA_CERRADA") return res.status(409).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Error al cerrar la caja" });
+  }
+});
+
+// ---------- Movimientos ----------
+
 // GET /api/movimientos
 router.get("/movimientos", async (req, res) => {
   try {
-    const { where, args } = buildWhere(req.query);
+    const { cajaId, caja } = await resolverCaja(req.query);
+    const { where, args } = buildWhere(req.query, cajaId);
     const limit = Math.min(parseInt(req.query.limit) || 300, 1000);
     const result = await db.execute({
       sql: `SELECT * FROM movimientos ${where} ORDER BY fecha DESC, id DESC LIMIT :limit`,
       args: { ...args, limit },
     });
-    res.json(result.rows);
+    res.json({ movimientos: result.rows, caja });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error al consultar movimientos" });
   }
 });
 
-// GET /api/resumen  -> saldo actual, saldo por medio, gasto por categoría,
-// gasto por día y por semana (siempre dentro del rango/filtros pedidos)
+// GET /api/resumen  -> saldo, gasto por categoría, por día y por semana,
+// SIEMPRE acotado a una sola caja (abierta por defecto) salvo que se pida "todas"
 router.get("/resumen", async (req, res) => {
   try {
-    const { where, args } = buildWhere(req.query);
+    const { cajaId, caja } = await resolverCaja(req.query);
+    const { where, args } = buildWhere(req.query, cajaId);
 
-    // Saldo actual y acumulados SIEMPRE son históricos totales (no se limitan
-    // al rango de fechas elegido en el dashboard), para que el saldo sea real.
-    const totalesGlobales = await db.execute(
-      `SELECT tipo, medio_pago, SUM(monto) as total FROM movimientos GROUP BY tipo, medio_pago`
-    );
-
-    const saldoPorMedio = {};
-    for (const m of MEDIOS_PAGO) saldoPorMedio[m] = 0;
-    let saldoTotal = 0;
-    for (const row of totalesGlobales.rows) {
-      const signo = row.tipo === "ingreso" ? 1 : -1;
-      saldoPorMedio[row.medio_pago] = (saldoPorMedio[row.medio_pago] || 0) + signo * (row.total || 0);
-      saldoTotal += signo * (row.total || 0);
-    }
-
-    // Lo demás sí respeta el rango de fechas / filtros elegidos
     const totalesRango = await db.execute({
       sql: `SELECT tipo, SUM(monto) as total FROM movimientos ${where} GROUP BY tipo`,
       args,
@@ -92,6 +157,22 @@ router.get("/resumen", async (req, res) => {
     for (const row of totalesRango.rows) {
       if (row.tipo === "ingreso") ingresosRango = row.total || 0;
       if (row.tipo === "gasto") gastosRango = row.total || 0;
+    }
+
+    const saldoInicial = caja ? caja.saldo_inicial || 0 : 0;
+    const saldoTotal = caja ? saldoInicial + ingresosRango - gastosRango : ingresosRango - gastosRango;
+
+    const saldoPorMedioResult = await db.execute({
+      sql: `SELECT tipo, medio_pago, SUM(monto) as total FROM movimientos ${where} GROUP BY tipo, medio_pago`,
+      args,
+    });
+    const saldoPorMedio = { efectivo: 0, tarjeta: 0, transferencia: 0 };
+    if (caja && caja.medio_apertura) {
+      saldoPorMedio[caja.medio_apertura] += saldoInicial;
+    }
+    for (const row of saldoPorMedioResult.rows) {
+      const signo = row.tipo === "ingreso" ? 1 : -1;
+      saldoPorMedio[row.medio_pago] = (saldoPorMedio[row.medio_pago] || 0) + signo * (row.total || 0);
     }
 
     const porCategoria = await db.execute({
@@ -104,7 +185,6 @@ router.get("/resumen", async (req, res) => {
       args,
     });
 
-    // Agrupar por semana ISO (año-semana) usando strftime de SQLite
     const porSemana = await db.execute({
       sql: `SELECT strftime('%Y-W%W', fecha) as semana, tipo, SUM(monto) as total
             FROM movimientos ${where} GROUP BY semana, tipo ORDER BY semana ASC`,
@@ -112,6 +192,7 @@ router.get("/resumen", async (req, res) => {
     });
 
     res.json({
+      caja,
       saldoTotal,
       saldoPorMedio,
       ingresosRango,
@@ -128,17 +209,18 @@ router.get("/resumen", async (req, res) => {
 
 // GET /api/categorias
 router.get("/categorias", (req, res) => {
-  res.json({
-    gasto: CATEGORIAS_GASTO,
-    medios_pago: MEDIOS_PAGO,
-  });
+  res.json({ gasto: CATEGORIAS_GASTO, medios_pago: MEDIOS_PAGO });
 });
 
-// POST /api/movimientos  (alta manual desde la web)
+// POST /api/movimientos  (alta manual desde la web, siempre va a la caja abierta)
 router.post("/movimientos", async (req, res) => {
   try {
-    const { tipo, monto, medio_pago, categoria, descripcion, fecha, usuario } =
-      req.body;
+    const { tipo, monto, medio_pago, categoria, descripcion, fecha, usuario } = req.body;
+
+    const abierta = await cajaAbierta();
+    if (!abierta) {
+      return res.status(409).json({ error: "No hay ninguna caja abierta. Ábrela primero (desde Telegram con /abrircaja)." });
+    }
 
     if (!["ingreso", "gasto"].includes(tipo)) {
       return res.status(400).json({ error: "tipo inválido" });
@@ -158,8 +240,8 @@ router.post("/movimientos", async (req, res) => {
     const fechaFinal = fecha || new Date().toISOString().slice(0, 10);
 
     const result = await db.execute({
-      sql: `INSERT INTO movimientos (tipo, monto, medio_pago, categoria, descripcion, fecha, usuario, origen)
-            VALUES (:tipo, :monto, :medio_pago, :categoria, :descripcion, :fecha, :usuario, 'web')`,
+      sql: `INSERT INTO movimientos (tipo, monto, medio_pago, categoria, descripcion, fecha, usuario, origen, caja_id)
+            VALUES (:tipo, :monto, :medio_pago, :categoria, :descripcion, :fecha, :usuario, 'web', :caja_id)`,
       args: {
         tipo,
         monto: montoNum,
@@ -168,6 +250,7 @@ router.post("/movimientos", async (req, res) => {
         descripcion: descripcion || null,
         fecha: fechaFinal,
         usuario: usuario || "web",
+        caja_id: abierta.id,
       },
     });
 
@@ -181,10 +264,7 @@ router.post("/movimientos", async (req, res) => {
 // DELETE /api/movimientos/:id
 router.delete("/movimientos/:id", async (req, res) => {
   try {
-    await db.execute({
-      sql: `DELETE FROM movimientos WHERE id = :id`,
-      args: { id: req.params.id },
-    });
+    await db.execute({ sql: `DELETE FROM movimientos WHERE id = :id`, args: { id: req.params.id } });
     res.status(204).end();
   } catch (err) {
     console.error(err);
