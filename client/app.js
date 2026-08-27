@@ -160,6 +160,10 @@ async function cargarSelectorCajas() {
 }
 
 function renderChartCategoria(porCategoria) {
+  if (typeof Chart === "undefined") {
+    console.error("[dashboard] Chart.js no está disponible (vendor/chart.umd.js no cargó).");
+    return;
+  }
   const filas = [...porCategoria].sort((a, b) => b.total - a.total);
   const ctx = document.getElementById("chart-categoria");
   if (charts.categoria) charts.categoria.destroy();
@@ -196,6 +200,10 @@ function renderChartCategoria(porCategoria) {
 }
 
 function renderChartTiempo(resumen) {
+  if (typeof Chart === "undefined") {
+    console.error("[dashboard] Chart.js no está disponible (vendor/chart.umd.js no cargó).");
+    return;
+  }
   const filas = state.modoTiempo === "dia" ? resumen.porDia : resumen.porSemana;
   const clave = state.modoTiempo === "dia" ? "fecha" : "semana";
   const etiquetas = [...new Set(filas.map((r) => r[clave]))].sort();
