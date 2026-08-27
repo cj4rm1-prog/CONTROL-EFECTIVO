@@ -99,14 +99,26 @@
         <canvas id="chart-categoria"></canvas>
       </div>
       <div class="card card-wide-2">
-        <div class="card-title-row">
-          <div class="card-title">Gasto en el tiempo</div>
-          <div class="mini-tabs" id="tiempo-tabs">
-            <button data-modo="dia" class="active">Por día</button>
-            <button data-modo="semana">Por semana</button>
-          </div>
+        <div class="card-title">Resumen por categoría</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tipo de gasto</th>
+                <th class="ta-right">Monto</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-categorias-body">
+              <tr><td colspan="2" class="empty">Cargando…</td></tr>
+            </tbody>
+            <tfoot>
+              <tr class="fila-total">
+                <td>Total</td>
+                <td class="ta-right" id="total-categorias">$0.00</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
-        <canvas id="chart-tiempo"></canvas>
       </div>
     </section>
 

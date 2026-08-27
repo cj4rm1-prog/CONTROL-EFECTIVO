@@ -109,7 +109,7 @@ async function cargarTodo() {
     document.getElementById("kpi-gastado").textContent = money(resumen.gastosRango);
 
     renderChartCategoria(resumen.porCategoria);
-    renderChartTiempo(resumen);
+    renderTablaCategorias(movimientosResp.movimientos);
     renderTabla(movimientosResp.movimientos);
   } catch (err) {
     if (err.message === "UNAUTHORIZED") {
@@ -199,37 +199,43 @@ function renderChartCategoria(porCategoria) {
   });
 }
 
-function renderChartTiempo(resumen) {
-  if (typeof Chart === "undefined") {
-    console.error("[dashboard] Chart.js no está disponible (vendor/chart.umd.js no cargó).");
+// Agrupa los movimientos de tipo "gasto" por categoría: suma montos y no
+// repite filas (una fila por categoría, con el total sumado).
+function agruparPorCategoria(movimientos) {
+  const grupos = {};
+  for (const m of movimientos) {
+    if (m.tipo !== "gasto") continue;
+    if (!grupos[m.categoria]) {
+      grupos[m.categoria] = { categoria: m.categoria, monto: 0 };
+    }
+    grupos[m.categoria].monto += Number(m.monto) || 0;
+  }
+  return Object.values(grupos).sort((a, b) => b.monto - a.monto);
+}
+
+function renderTablaCategorias(movimientos) {
+  const tbody = document.getElementById("tabla-categorias-body");
+  const grupos = agruparPorCategoria(movimientos || []);
+
+  if (!grupos.length) {
+    tbody.innerHTML = `<tr><td colspan="2" class="empty">No hay gastos en este periodo.</td></tr>`;
+    document.getElementById("total-categorias").textContent = money(0);
     return;
   }
-  const filas = state.modoTiempo === "dia" ? resumen.porDia : resumen.porSemana;
-  const clave = state.modoTiempo === "dia" ? "fecha" : "semana";
-  const etiquetas = [...new Set(filas.map((r) => r[clave]))].sort();
 
-  const ingresos = etiquetas.map((e) => {
-    const row = filas.find((r) => r[clave] === e && r.tipo === "ingreso");
-    return row ? row.total : 0;
-  });
-  const gastos = etiquetas.map((e) => {
-    const row = filas.find((r) => r[clave] === e && r.tipo === "gasto");
-    return row ? row.total : 0;
-  });
+  let total = 0;
+  tbody.innerHTML = grupos
+    .map((g) => {
+      total += g.monto;
+      return `
+        <tr>
+          <td>${g.categoria}</td>
+          <td class="ta-right">${money(g.monto)}</td>
+        </tr>`;
+    })
+    .join("");
 
-  const ctx = document.getElementById("chart-tiempo");
-  if (charts.tiempo) charts.tiempo.destroy();
-  charts.tiempo = new Chart(ctx, {
-    type: state.modoTiempo === "dia" ? "line" : "bar",
-    data: {
-      labels: etiquetas,
-      datasets: [
-        { label: "Gasto", data: gastos, borderColor: "#d9553c", backgroundColor: state.modoTiempo === "dia" ? "#d9553c33" : "#d9553c", tension: 0.3, fill: state.modoTiempo === "dia" },
-        { label: "Saldo ingresado", data: ingresos, borderColor: "#2f9e6e", backgroundColor: state.modoTiempo === "dia" ? "#2f9e6e33" : "#2f9e6e", tension: 0.3, fill: state.modoTiempo === "dia" },
-      ],
-    },
-    options: chartOptions({}),
-  });
+  document.getElementById("total-categorias").textContent = money(total);
 }
 
 function chartOptions({ horizontal = false, legend = true } = {}) {
@@ -289,15 +295,6 @@ document.getElementById("range-tabs").addEventListener("click", (e) => {
   document.querySelectorAll("#range-tabs button").forEach((b) => b.classList.remove("active"));
   btn.classList.add("active");
   state.range = btn.dataset.range;
-  cargarTodo();
-});
-
-document.getElementById("tiempo-tabs").addEventListener("click", (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) return;
-  document.querySelectorAll("#tiempo-tabs button").forEach((b) => b.classList.remove("active"));
-  btn.classList.add("active");
-  state.modoTiempo = btn.dataset.modo;
   cargarTodo();
 });
 
