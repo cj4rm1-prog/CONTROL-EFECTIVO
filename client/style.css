@@ -150,6 +150,19 @@ html, body {
 .btn-primary:hover { filter: brightness(0.95); }
 .btn-full { width: 100%; margin-top: 8px; }
 
+.btn-secondary {
+  background: var(--card);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font);
+}
+.btn-secondary:hover { background: var(--accent-soft); }
+
 /* ---------- Barra de estado de caja ---------- */
 .caja-bar {
   display: flex;
@@ -487,4 +500,11 @@ td {
   .pag-bar { justify-content: space-between; }
   .topbar { flex-direction: column; align-items: stretch; }
   .range-tabs { justify-content: center; }
+}
+
+.app-footer {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 24px;
 }

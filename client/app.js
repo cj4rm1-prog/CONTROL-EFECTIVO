@@ -1,4 +1,5 @@
 const POR_PAGINA = 10;
+const APP_VERSION = "1.3.0";
 
 const PALETA_CATEGORIAS = ["#0EA5A4", "#F59E0B", "#F97362", "#3B82F6", "#8B5CF6", "#EC4899", "#10B981", "#9CA3AF"];
 const ICONO_CATEGORIA = {
@@ -23,6 +24,8 @@ const state = {
   categoriaColor: {},
   movimientosActuales: [],
   paginaActual: 1,
+  totalIngresado: 0,
+  totalGastado: 0,
 };
 
 const charts = {};
@@ -139,6 +142,8 @@ async function cargarTodo() {
     document.getElementById("saldo-transferencia").textContent = money(resumen.saldoPorMedio.transferencia);
     document.getElementById("kpi-ingresado").textContent = money(resumen.ingresosRango);
     document.getElementById("kpi-gastado").textContent = money(resumen.gastosRango);
+    state.totalIngresado = resumen.ingresosRango;
+    state.totalGastado = resumen.gastosRango;
 
     renderChartCategoria(resumen.porCategoria);
     renderTablaCategorias(resumen.porCategoria);
@@ -333,6 +338,42 @@ async function eliminarMovimiento(id) {
   }
 }
 
+function exportarExcel() {
+  if (typeof XLSX === "undefined") {
+    mostrarError("No se pudo generar el Excel: la librería no cargó. Recarga la página e intenta de nuevo.");
+    return;
+  }
+  if (!state.movimientosActuales.length) {
+    mostrarError("No hay movimientos para exportar en este periodo.");
+    return;
+  }
+
+  const filas = state.movimientosActuales.map((m) => ({
+    Fecha: m.fecha,
+    Tipo: m.tipo === "gasto" ? "Gasto" : "Saldo ingresado",
+    Categoría: m.categoria,
+    Medio: m.medio_pago,
+    Descripción: m.descripcion || "",
+    Origen: m.origen,
+    Monto: Number(m.monto),
+  }));
+
+  filas.push({ Fecha: "", Tipo: "", Categoría: "", Medio: "", Descripción: "", Origen: "", Monto: "" });
+  filas.push({ Fecha: "", Tipo: "", Categoría: "", Medio: "", Descripción: "", Origen: "Total ingresado", Monto: state.totalIngresado });
+  filas.push({ Fecha: "", Tipo: "", Categoría: "", Medio: "", Descripción: "", Origen: "Total gastado", Monto: state.totalGastado });
+
+  const hoja = XLSX.utils.json_to_sheet(filas);
+  hoja["!cols"] = [{ wch: 12 }, { wch: 15 }, { wch: 16 }, { wch: 14 }, { wch: 30 }, { wch: 16 }, { wch: 12 }];
+
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, "Movimientos");
+
+  const fechaArchivo = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
+  XLSX.writeFile(libro, `caja-chica-movimientos-${fechaArchivo}.xlsx`);
+}
+
+document.getElementById("btn-exportar").addEventListener("click", exportarExcel);
+
 function renderPaginacion(total, inicio, cantidadMostrada, totalPaginas) {
   const infoEl = document.getElementById("pag-info");
   const numerosEl = document.getElementById("pag-numbers");
@@ -488,6 +529,8 @@ async function intentarEntrar(key) {
     localStorage.setItem("dashboard_key", key);
     document.getElementById("gate").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
+    const footer = document.getElementById("app-version");
+    if (footer) footer.textContent = `Caja chica · v${APP_VERSION}`;
     await cargarSelectorCajas();
     cargarTodo();
   } catch (err) {

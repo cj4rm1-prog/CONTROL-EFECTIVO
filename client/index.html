@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Caja Chica — Control de gastos</title>
 <script src="vendor/chart.umd.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -112,6 +113,7 @@
           <select id="filtro-categoria">
             <option value="">Cualquier categoría</option>
           </select>
+          <button id="btn-exportar" class="btn-secondary">Exportar a Excel</button>
         </div>
       </div>
 
@@ -149,6 +151,8 @@
     </section>
 
   </main>
+
+  <footer id="app-version" class="app-footer">Caja chica</footer>
 </div>
 
 <div id="modal" class="modal hidden">
