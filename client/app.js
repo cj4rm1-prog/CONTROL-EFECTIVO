@@ -1,5 +1,5 @@
 const POR_PAGINA = 10;
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 
 const PALETA_CATEGORIAS = ["#0EA5A4", "#F59E0B", "#F97362", "#3B82F6", "#8B5CF6", "#EC4899", "#10B981", "#9CA3AF"];
 const ICONO_CATEGORIA = {
@@ -338,8 +338,8 @@ async function eliminarMovimiento(id) {
   }
 }
 
-function exportarExcel() {
-  if (typeof XLSX === "undefined") {
+async function exportarExcel() {
+  if (typeof ExcelJS === "undefined") {
     mostrarError("No se pudo generar el Excel: la librería no cargó. Recarga la página e intenta de nuevo.");
     return;
   }
@@ -348,28 +348,69 @@ function exportarExcel() {
     return;
   }
 
-  const filas = state.movimientosActuales.map((m) => ({
-    Fecha: m.fecha,
-    Tipo: m.tipo === "gasto" ? "Gasto" : "Saldo ingresado",
-    Categoría: m.categoria,
-    Medio: m.medio_pago,
-    Descripción: m.descripcion || "",
-    Origen: m.origen,
-    Monto: Number(m.monto),
-  }));
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Movimientos");
 
-  filas.push({ Fecha: "", Tipo: "", Categoría: "", Medio: "", Descripción: "", Origen: "", Monto: "" });
-  filas.push({ Fecha: "", Tipo: "", Categoría: "", Medio: "", Descripción: "", Origen: "Total ingresado", Monto: state.totalIngresado });
-  filas.push({ Fecha: "", Tipo: "", Categoría: "", Medio: "", Descripción: "", Origen: "Total gastado", Monto: state.totalGastado });
+  ws.columns = [
+    { header: "Fecha", key: "fecha", width: 12 },
+    { header: "Tipo", key: "tipo", width: 16 },
+    { header: "Categoría", key: "categoria", width: 16 },
+    { header: "Medio", key: "medio", width: 14 },
+    { header: "Descripción", key: "descripcion", width: 30 },
+    { header: "Origen", key: "origen", width: 12 },
+    { header: "Monto", key: "monto", width: 12 },
+  ];
 
-  const hoja = XLSX.utils.json_to_sheet(filas);
-  hoja["!cols"] = [{ wch: 12 }, { wch: 15 }, { wch: 16 }, { wch: 14 }, { wch: 30 }, { wch: 16 }, { wch: 12 }];
+  ws.getRow(1).eachCell((cell) => {
+    cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0EA5A4" } };
+    cell.alignment = { vertical: "middle" };
+  });
 
-  const libro = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(libro, hoja, "Movimientos");
+  state.movimientosActuales.forEach((m) => {
+    const row = ws.addRow({
+      fecha: m.fecha,
+      tipo: m.tipo === "gasto" ? "Gasto" : "Saldo ingresado",
+      categoria: m.categoria,
+      medio: m.medio_pago,
+      descripcion: m.descripcion || "",
+      origen: m.origen,
+      monto: Number(m.monto),
+    });
+    row.eachCell((cell, colNumber) => {
+      cell.font = { name: "Arial", size: 10 };
+      cell.border = { bottom: { style: "thin", color: { argb: "FFE5E7EB" } } };
+      if (colNumber === 7) cell.numFmt = '"$"#,##0.00';
+    });
+  });
 
+  ws.addRow({});
+
+  const filaIngresado = ws.addRow({ origen: "Total ingresado", monto: state.totalIngresado });
+  const filaGastado = ws.addRow({ origen: "Total gastado", monto: state.totalGastado });
+  [filaIngresado, filaGastado].forEach((row) => {
+    row.eachCell((cell, colNumber) => {
+      cell.font = { name: "Arial", size: 10, bold: true };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F5F7" } };
+      if (colNumber === 7) cell.numFmt = '"$"#,##0.00';
+    });
+  });
+
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
   const fechaArchivo = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(new Date());
-  XLSX.writeFile(libro, `caja-chica-movimientos-${fechaArchivo}.xlsx`);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `caja-chica-movimientos-${fechaArchivo}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 document.getElementById("btn-exportar").addEventListener("click", exportarExcel);

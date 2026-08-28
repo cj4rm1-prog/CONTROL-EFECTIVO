@@ -4,6 +4,12 @@ Este archivo lleva el control de qué cambió en cada versión. El número de
 versión actual también aparece al pie del dashboard web, así siempre puedes
 confirmar qué versión está corriendo en Render sin adivinar.
 
+## v1.3.1 — Corrección de formato en Excel
+- Se cambió la librería de exportación (de SheetJS a ExcelJS), porque la
+  anterior no podía escribir colores ni estilos desde el navegador, solo
+  datos en crudo. Ahora el `.xlsx` sí sale con encabezado turquesa, texto
+  en negrita para los totales, formato de moneda y bordes.
+
 ## v1.3.0 — Exportar a Excel
 - Botón "Exportar a Excel" en la lista de movimientos: descarga un `.xlsx`
   con los movimientos filtrados actuales (respeta rango de fechas, caja y

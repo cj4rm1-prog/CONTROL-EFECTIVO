@@ -18,12 +18,12 @@ const librerias = [
     destino: path.join(destDir, "chart.umd.js"),
   },
   {
-    nombre: "SheetJS (xlsx)",
+    nombre: "ExcelJS",
     candidatos: [
-      path.join(__dirname, "..", "node_modules", "xlsx", "dist", "xlsx.full.min.js"),
-      path.join(__dirname, "..", "node_modules", "xlsx", "dist", "xlsx.js"),
+      path.join(__dirname, "..", "node_modules", "exceljs", "dist", "exceljs.min.js"),
+      path.join(__dirname, "..", "node_modules", "exceljs", "dist", "exceljs.js"),
     ],
-    destino: path.join(destDir, "xlsx.full.min.js"),
+    destino: path.join(destDir, "exceljs.min.js"),
   },
 ];
 
