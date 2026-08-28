@@ -13,7 +13,7 @@ const ICONO_CATEGORIA = {
 };
 
 const state = {
-  range: "mes",
+  range: "todo",
   filtroTipo: "",
   filtroMedio: "",
   filtroCategoria: "",
