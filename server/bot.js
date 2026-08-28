@@ -1,6 +1,7 @@
 const TelegramBot = require("node-telegram-bot-api");
 const { db, CATEGORIAS_GASTO } = require("./db");
 const { cajaAbierta, saldoDeCaja, abrirCaja, cerrarCaja } = require("./cajas");
+const { fechaEcuador } = require("./fecha");
 
 // Estado en memoria por chat (suficiente para un equipo pequeño; si el
 // proceso se reinicia, el registro a medias se pierde y hay que empezar de nuevo)
@@ -16,7 +17,11 @@ function fmt(n) {
 
 function fmtFecha(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" });
+  return new Date(iso).toLocaleString("es-EC", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Guayaquil",
+  });
 }
 
 function iniciarBot() {
@@ -279,7 +284,7 @@ function iniciarBot() {
 
     if (sesion.flujo === "movimiento" && sesion.paso === "descripcion") {
       const descripcion = msg.text === "-" ? null : msg.text;
-      const fecha = new Date().toISOString().slice(0, 10);
+      const fecha = fechaEcuador();
       const usuario = nombreUsuario(msg);
       const categoria = sesion.tipo === "ingreso" ? "Saldo" : sesion.categoria;
 

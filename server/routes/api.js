@@ -1,6 +1,7 @@
 const express = require("express");
 const { db, CATEGORIAS_GASTO, MEDIOS_PAGO } = require("../db");
 const { cajaAbierta, saldoDeCaja, abrirCaja, cerrarCaja } = require("../cajas");
+const { fechaEcuador } = require("../fecha");
 
 const router = express.Router();
 
@@ -237,7 +238,7 @@ router.post("/movimientos", async (req, res) => {
       return res.status(400).json({ error: "categoria requerida" });
     }
 
-    const fechaFinal = fecha || new Date().toISOString().slice(0, 10);
+    const fechaFinal = fecha || fechaEcuador();
 
     const result = await db.execute({
       sql: `INSERT INTO movimientos (tipo, monto, medio_pago, categoria, descripcion, fecha, usuario, origen, caja_id)
