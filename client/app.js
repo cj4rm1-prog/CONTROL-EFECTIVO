@@ -1,12 +1,28 @@
+const POR_PAGINA = 10;
+
+const PALETA_CATEGORIAS = ["#0EA5A4", "#F59E0B", "#F97362", "#3B82F6", "#8B5CF6", "#EC4899", "#10B981", "#9CA3AF"];
+const ICONO_CATEGORIA = {
+  "Alimentación": "🍽️",
+  "Salud": "💊",
+  "Transporte": "🚌",
+  "Servicios": "🧾",
+  "Entretenimiento": "🎬",
+  "Educación": "🎓",
+  "Hogar": "🏠",
+  "Otros": "📦",
+};
+
 const state = {
   range: "mes",
   filtroTipo: "",
   filtroMedio: "",
   filtroCategoria: "",
-  modoTiempo: "dia",
-  vistaCaja: "abierta", // "abierta" | "todas" | id numérico de una caja cerrada
+  vistaCaja: "abierta",
   apiKey: localStorage.getItem("dashboard_key") || "",
   categorias: { gasto: [] },
+  categoriaColor: {},
+  movimientosActuales: [],
+  paginaActual: 1,
 };
 
 const charts = {};
@@ -51,18 +67,18 @@ function ocultarError() {
 
 function rangoFechas(range) {
   const hoy = new Date();
-  const iso = (d) => d.toISOString().slice(0, 10);
-  if (range === "hoy") return { desde: iso(hoy), hasta: iso(hoy) };
+  const iso = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil" }).format(d);
+  const hoyIso = iso(hoy);
+  if (range === "hoy") return { desde: hoyIso, hasta: hoyIso };
   if (range === "semana") {
-    const hace7 = new Date(hoy);
-    hace7.setDate(hoy.getDate() - 6);
-    return { desde: iso(hace7), hasta: iso(hoy) };
+    const hace7 = new Date(hoy.getTime() - 6 * 24 * 60 * 60 * 1000);
+    return { desde: iso(hace7), hasta: hoyIso };
   }
   if (range === "mes") {
-    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    return { desde: iso(inicioMes), hasta: iso(hoy) };
+    const [year, month] = hoyIso.split("-");
+    return { desde: `${year}-${month}-01`, hasta: hoyIso };
   }
-  return { desde: "", hasta: "" }; // todo
+  return { desde: "", hasta: "" };
 }
 
 function money(n) {
@@ -71,11 +87,29 @@ function money(n) {
 
 function fechaCorta(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-EC", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(iso).toLocaleDateString("es-EC", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "America/Guayaquil",
+  });
 }
 
 function labelRange(range) {
-  return { hoy: "Hoy", semana: "Últimos 7 días", mes: "Este mes", todo: "Histórico completo" }[range];
+  return {
+    hoy: "Saldo — hoy",
+    semana: "Saldo — últimos 7 días",
+    mes: "Saldo — este mes",
+    todo: "Saldo — histórico completo",
+  }[range];
+}
+
+function colorCategoria(categoria) {
+  if (!state.categoriaColor[categoria]) {
+    const idx = Object.keys(state.categoriaColor).length % PALETA_CATEGORIAS.length;
+    state.categoriaColor[categoria] = PALETA_CATEGORIAS[idx];
+  }
+  return state.categoriaColor[categoria];
 }
 
 // ---------- Carga y render ----------
@@ -99,8 +133,6 @@ async function cargarTodo() {
     renderCajaBar(resumen.caja);
 
     document.getElementById("receipt-period").textContent = labelRange(state.range);
-    document.getElementById("receipt-title").textContent =
-      state.vistaCaja === "todas" ? "SALDO — TODAS LAS CAJAS" : "SALDO DE LA CAJA";
     document.getElementById("kpi-saldo").textContent = money(resumen.saldoTotal);
     document.getElementById("saldo-efectivo").textContent = money(resumen.saldoPorMedio.efectivo);
     document.getElementById("saldo-tarjeta").textContent = money(resumen.saldoPorMedio.tarjeta);
@@ -109,8 +141,11 @@ async function cargarTodo() {
     document.getElementById("kpi-gastado").textContent = money(resumen.gastosRango);
 
     renderChartCategoria(resumen.porCategoria);
-    renderTablaCategorias(movimientosResp.movimientos);
-    renderTabla(movimientosResp.movimientos);
+    renderTablaCategorias(resumen.porCategoria);
+
+    state.movimientosActuales = movimientosResp.movimientos || [];
+    state.paginaActual = 1;
+    renderMovimientos();
   } catch (err) {
     if (err.message === "UNAUTHORIZED") {
       volverAlGate();
@@ -118,8 +153,8 @@ async function cargarTodo() {
     }
     console.error("[dashboard] Error cargando datos:", err);
     mostrarError(err.message || "Ocurrió un error inesperado cargando el dashboard.");
-    document.getElementById("tabla-body").innerHTML =
-      `<tr><td colspan="8" class="empty">No se pudieron cargar los movimientos.</td></tr>`;
+    document.getElementById("tabla-body").innerHTML = `<tr><td colspan="8" class="empty">No se pudieron cargar los movimientos.</td></tr>`;
+    document.getElementById("tabla-cards").innerHTML = `<div class="empty">No se pudieron cargar los movimientos.</div>`;
   }
 }
 
@@ -130,11 +165,12 @@ function renderCajaBar(caja) {
     return;
   }
   if (!caja) {
-    info.innerHTML = `🔒 No hay ninguna caja abierta. Ábrela desde Telegram con <code>/abrircaja</code>.`;
+    info.innerHTML = `No hay ninguna caja abierta. Ábrela desde Telegram con <code>/abrircaja</code>.`;
     return;
   }
-  const estadoTxt = caja.estado === "abierta" ? "🔓 Caja abierta" : "🔒 Caja cerrada";
-  info.textContent = `${estadoTxt} · desde ${fechaCorta(caja.fecha_apertura)}` +
+  const estadoTxt = caja.estado === "abierta" ? "Caja abierta" : "Caja cerrada";
+  info.textContent =
+    `${estadoTxt} · desde ${fechaCorta(caja.fecha_apertura)}` +
     (caja.fecha_cierre ? ` hasta ${fechaCorta(caja.fecha_cierre)}` : "") +
     ` · saldo inicial ${money(caja.saldo_inicial)}`;
 }
@@ -148,10 +184,7 @@ async function cargarSelectorCajas() {
       `<option value="abierta">Caja abierta actual</option>` +
       `<option value="todas">Todas las cajas (histórico)</option>` +
       cerradas
-        .map(
-          (c) =>
-            `<option value="${c.id}">Caja #${c.id} · ${fechaCorta(c.fecha_apertura)} (cerrada)</option>`
-        )
+        .map((c) => `<option value="${c.id}">Caja #${c.id} · ${fechaCorta(c.fecha_apertura)} (cerrada)</option>`)
         .join("");
     select.value = state.vistaCaja;
   } catch (err) {
@@ -174,8 +207,6 @@ function renderChartCategoria(porCategoria) {
     return;
   }
 
-  const paletaCategorias = ["#d9553c", "#c9a227", "#3f8fd1", "#8a6fd1", "#2f9e6e", "#e08a3c", "#5aa8a0", "#b06fa0"];
-
   charts.categoria = new Chart(ctx, {
     type: "doughnut",
     data: {
@@ -183,8 +214,8 @@ function renderChartCategoria(porCategoria) {
       datasets: [
         {
           data: filas.map((f) => f.total),
-          backgroundColor: filas.map((_, i) => paletaCategorias[i % paletaCategorias.length]),
-          borderColor: "#163025",
+          backgroundColor: filas.map((f) => colorCategoria(f.categoria)),
+          borderColor: "#FFFFFF",
           borderWidth: 2,
         },
       ],
@@ -192,74 +223,57 @@ function renderChartCategoria(porCategoria) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { position: "right", labels: { color: "#f6f3ea", boxWidth: 12, font: { size: 11 } } },
-      },
+      cutout: "65%",
+      plugins: { legend: { display: false } },
     },
   });
 }
 
-// Agrupa los movimientos de tipo "gasto" por categoría: suma montos y no
-// repite filas (una fila por categoría, con el total sumado).
-function agruparPorCategoria(movimientos) {
-  const grupos = {};
-  for (const m of movimientos) {
-    if (m.tipo !== "gasto") continue;
-    if (!grupos[m.categoria]) {
-      grupos[m.categoria] = { categoria: m.categoria, monto: 0 };
-    }
-    grupos[m.categoria].monto += Number(m.monto) || 0;
-  }
-  return Object.values(grupos).sort((a, b) => b.monto - a.monto);
-}
+function renderTablaCategorias(porCategoria) {
+  const cont = document.getElementById("tabla-categorias-body");
+  const filas = [...porCategoria].sort((a, b) => b.total - a.total);
 
-function renderTablaCategorias(movimientos) {
-  const tbody = document.getElementById("tabla-categorias-body");
-  const grupos = agruparPorCategoria(movimientos || []);
-
-  if (!grupos.length) {
-    tbody.innerHTML = `<tr><td colspan="2" class="empty">No hay gastos en este periodo.</td></tr>`;
+  if (!filas.length) {
+    cont.innerHTML = `<div class="empty">No hay gastos en este periodo.</div>`;
     document.getElementById("total-categorias").textContent = money(0);
     return;
   }
 
   let total = 0;
-  tbody.innerHTML = grupos
-    .map((g) => {
-      total += g.monto;
+  cont.innerHTML = filas
+    .map((f) => {
+      total += f.total;
+      const color = colorCategoria(f.categoria);
       return `
-        <tr>
-          <td>${g.categoria}</td>
-          <td class="ta-right">${money(g.monto)}</td>
-        </tr>`;
+        <div class="resumen-categoria-row">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:8px;"></span>${f.categoria}</span>
+          <span>${money(f.total)}</span>
+        </div>`;
     })
     .join("");
 
   document.getElementById("total-categorias").textContent = money(total);
 }
 
-function chartOptions({ horizontal = false, legend = true } = {}) {
-  return {
-    indexAxis: horizontal ? "y" : "x",
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: legend, labels: { color: "#f6f3ea" } },
-    },
-    scales: {
-      x: { ticks: { color: "#9fb0a7" }, grid: { color: "rgba(255,255,255,0.06)" } },
-      y: { ticks: { color: "#9fb0a7" }, grid: { color: "rgba(255,255,255,0.06)" } },
-    },
-  };
+function renderMovimientos() {
+  const total = state.movimientosActuales.length;
+  const totalPaginas = Math.max(1, Math.ceil(total / POR_PAGINA));
+  if (state.paginaActual > totalPaginas) state.paginaActual = totalPaginas;
+  const inicio = (state.paginaActual - 1) * POR_PAGINA;
+  const pagina = state.movimientosActuales.slice(inicio, inicio + POR_PAGINA);
+
+  renderTablaEscritorio(pagina);
+  renderTarjetasMovil(pagina);
+  renderPaginacion(total, inicio, pagina.length, totalPaginas);
 }
 
-function renderTabla(movimientos) {
+function renderTablaEscritorio(pagina) {
   const tbody = document.getElementById("tabla-body");
-  if (!movimientos || !movimientos.length) {
+  if (!pagina.length) {
     tbody.innerHTML = `<tr><td colspan="8" class="empty">No hay movimientos en este periodo.</td></tr>`;
     return;
   }
-  tbody.innerHTML = movimientos
+  tbody.innerHTML = pagina
     .map(
       (m) => `
     <tr>
@@ -276,16 +290,87 @@ function renderTabla(movimientos) {
     .join("");
 
   tbody.querySelectorAll(".row-delete").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      if (!confirm("¿Eliminar este movimiento?")) return;
-      try {
-        await apiFetch(`/movimientos/${btn.dataset.id}`, { method: "DELETE" });
-        cargarTodo();
-      } catch (err) {
-        mostrarError(err.message);
-      }
-    });
+    btn.addEventListener("click", () => eliminarMovimiento(btn.dataset.id));
   });
+}
+
+function renderTarjetasMovil(pagina) {
+  const cont = document.getElementById("tabla-cards");
+  if (!pagina.length) {
+    cont.innerHTML = `<div class="empty">No hay movimientos en este periodo.</div>`;
+    return;
+  }
+  cont.innerHTML = pagina
+    .map((m) => {
+      const esGasto = m.tipo === "gasto";
+      const color = esGasto ? colorCategoria(m.categoria) : "#0EA5A4";
+      const icono = esGasto ? ICONO_CATEGORIA[m.categoria] || "•" : "💰";
+      return `
+      <div class="mov-card">
+        <div class="mov-icon" style="background:${color}22;">${icono}</div>
+        <div class="mov-info">
+          <div class="mov-titulo">${esGasto ? m.categoria : "Saldo ingresado"}</div>
+          <div class="mov-sub">${fechaCorta(m.fecha)} · ${m.medio_pago}${m.descripcion ? " · " + m.descripcion : ""}</div>
+        </div>
+        <div class="mov-monto" style="color:${esGasto ? "#F97362" : "#0EA5A4"};">${esGasto ? "-" : "+"}${money(m.monto)}</div>
+        <button class="mov-delete" data-id="${m.id}" title="Eliminar" aria-label="Eliminar movimiento">✕</button>
+      </div>`;
+    })
+    .join("");
+
+  cont.querySelectorAll(".mov-delete").forEach((btn) => {
+    btn.addEventListener("click", () => eliminarMovimiento(btn.dataset.id));
+  });
+}
+
+async function eliminarMovimiento(id) {
+  if (!confirm("¿Eliminar este movimiento?")) return;
+  try {
+    await apiFetch(`/movimientos/${id}`, { method: "DELETE" });
+    cargarTodo();
+  } catch (err) {
+    mostrarError(err.message);
+  }
+}
+
+function renderPaginacion(total, inicio, cantidadMostrada, totalPaginas) {
+  const infoEl = document.getElementById("pag-info");
+  const numerosEl = document.getElementById("pag-numbers");
+  const simpleEl = document.getElementById("pag-simple");
+
+  if (!total) {
+    infoEl.textContent = "";
+    numerosEl.innerHTML = "";
+    simpleEl.innerHTML = "";
+    return;
+  }
+
+  infoEl.textContent = `Mostrando ${inicio + 1}–${inicio + cantidadMostrada} de ${total}`;
+
+  const pag = state.paginaActual;
+  let botonesNumeros = `<button ${pag === 1 ? "disabled" : ""} data-pag="${pag - 1}" aria-label="Página anterior">‹</button>`;
+  for (let p = 1; p <= totalPaginas; p++) {
+    botonesNumeros += `<button class="${p === pag ? "active" : ""}" data-pag="${p}">${p}</button>`;
+  }
+  botonesNumeros += `<button ${pag === totalPaginas ? "disabled" : ""} data-pag="${pag + 1}" aria-label="Página siguiente">›</button>`;
+  numerosEl.innerHTML = botonesNumeros;
+  numerosEl.querySelectorAll("button[data-pag]").forEach((btn) => {
+    btn.addEventListener("click", () => irAPagina(parseInt(btn.dataset.pag, 10)));
+  });
+
+  simpleEl.innerHTML = `
+    <button class="pag-prev" ${pag === 1 ? "disabled" : ""} aria-label="Página anterior">‹</button>
+    <span>Página ${pag} de ${totalPaginas}</span>
+    <button class="pag-next" ${pag === totalPaginas ? "disabled" : ""} aria-label="Página siguiente">›</button>`;
+  simpleEl.querySelector(".pag-prev").addEventListener("click", () => irAPagina(pag - 1));
+  simpleEl.querySelector(".pag-next").addEventListener("click", () => irAPagina(pag + 1));
+}
+
+function irAPagina(n) {
+  const totalPaginas = Math.max(1, Math.ceil(state.movimientosActuales.length / POR_PAGINA));
+  if (n < 1 || n > totalPaginas) return;
+  state.paginaActual = n;
+  renderMovimientos();
 }
 
 // ---------- Interacciones ----------
@@ -356,6 +441,8 @@ function poblarSelectCategoria() {
   filtro.innerHTML =
     `<option value="">Cualquier categoría</option>` +
     state.categorias.gasto.map((c) => `<option value="${c}">${c}</option>`).join("");
+
+  state.categorias.gasto.forEach((c) => colorCategoria(c));
 }
 
 form.addEventListener("submit", async (e) => {
@@ -415,10 +502,8 @@ document.getElementById("gate-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") intentarEntrar(e.target.value.trim());
 });
 
-// Si ya había una clave guardada, intenta entrar automáticamente
 if (state.apiKey) {
   intentarEntrar(state.apiKey);
 } else {
-  // Si el backend no exige clave, entra directo
   intentarEntrar("");
 }

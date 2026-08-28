@@ -4,8 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Caja Chica — Control de gastos</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="vendor/chart.umd.js"></script>
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -13,11 +11,11 @@
 
 <div id="gate" class="gate">
   <div class="gate-card">
-    <div class="gate-mark">◈</div>
-    <h1>Caja Chica</h1>
+    <div class="gate-mark">C</div>
+    <h1>Caja chica</h1>
     <p>Ingresa la clave del panel para continuar.</p>
     <input id="gate-input" type="password" placeholder="Clave de acceso" autocomplete="off" />
-    <button id="gate-btn">Entrar</button>
+    <button id="gate-btn" class="btn-primary btn-full">Entrar</button>
     <p id="gate-error" class="gate-error"></p>
   </div>
 </div>
@@ -26,9 +24,9 @@
 
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">◈</span>
+      <span class="brand-mark">C</span>
       <div>
-        <div class="brand-title">Caja Chica</div>
+        <div class="brand-title">Caja chica</div>
         <div class="brand-sub">Control de gastos</div>
       </div>
     </div>
@@ -43,7 +41,6 @@
     <button id="btn-nuevo" class="btn-primary">+ Nuevo movimiento</button>
   </header>
 
-  <!-- Estado de la caja: cuál se está viendo -->
   <section class="caja-bar" id="caja-bar">
     <div class="caja-info" id="caja-info">Cargando estado de caja…</div>
     <select id="selector-caja">
@@ -54,75 +51,50 @@
 
   <div id="error-banner" class="error-banner hidden"></div>
 
-  <main class="layout">
+  <main class="dashboard-grid">
 
-    <!-- Cinta tipo recibo: saldo actual -->
-    <section class="receipt" id="receipt">
-      <div class="receipt-row receipt-head">
-        <span id="receipt-title">SALDO DE LA CAJA</span>
-        <span id="receipt-period">—</span>
+    <section class="card saldo-card">
+      <div class="saldo-label" id="receipt-period">Saldo — este mes</div>
+      <div class="saldo-monto" id="kpi-saldo">$0.00</div>
+      <div class="saldo-mini-grid">
+        <div class="saldo-mini">
+          <div class="saldo-mini-label">Efectivo</div>
+          <div class="saldo-mini-valor" id="saldo-efectivo">$0.00</div>
+        </div>
+        <div class="saldo-mini">
+          <div class="saldo-mini-label">Tarjeta</div>
+          <div class="saldo-mini-valor" id="saldo-tarjeta">$0.00</div>
+        </div>
+        <div class="saldo-mini">
+          <div class="saldo-mini-label">Transf.</div>
+          <div class="saldo-mini-valor" id="saldo-transferencia">$0.00</div>
+        </div>
       </div>
-      <div class="receipt-row receipt-total">
-        <span>Disponible</span>
-        <span class="mono" id="kpi-saldo">$0.00</span>
-      </div>
-      <div class="receipt-divider"></div>
-      <div class="receipt-row">
-        <span>💵 Efectivo</span>
-        <span class="mono" id="saldo-efectivo">$0.00</span>
-      </div>
-      <div class="receipt-row">
-        <span>💳 Tarjeta</span>
-        <span class="mono" id="saldo-tarjeta">$0.00</span>
-      </div>
-      <div class="receipt-row">
-        <span>🏦 Transferencia</span>
-        <span class="mono" id="saldo-transferencia">$0.00</span>
-      </div>
-      <div class="receipt-divider"></div>
-      <div class="receipt-row">
-        <span>Ingresado en el periodo</span>
-        <span class="mono positive" id="kpi-ingresado">$0.00</span>
-      </div>
-      <div class="receipt-row">
-        <span>Gastado en el periodo</span>
-        <span class="mono negative" id="kpi-gastado">$0.00</span>
-      </div>
-      <svg class="receipt-tear" viewBox="0 0 400 12" preserveAspectRatio="none">
-        <path d="M0,0 L10,12 L20,0 L30,12 L40,0 L50,12 L60,0 L70,12 L80,0 L90,12 L100,0 L110,12 L120,0 L130,12 L140,0 L150,12 L160,0 L170,12 L180,0 L190,12 L200,0 L210,12 L220,0 L230,12 L240,0 L250,12 L260,0 L270,12 L280,0 L290,12 L300,0 L310,12 L320,0 L330,12 L340,0 L350,12 L360,0 L370,12 L380,0 L390,12 L400,0 L400,12 L0,12 Z" fill="var(--paper)"/>
-      </svg>
-    </section>
-
-    <section class="grid">
-      <div class="card">
-        <div class="card-title">Gasto por categoría</div>
-        <canvas id="chart-categoria"></canvas>
-      </div>
-      <div class="card card-wide-2">
-        <div class="card-title">Resumen por categoría</div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Tipo de gasto</th>
-                <th class="ta-right">Monto</th>
-              </tr>
-            </thead>
-            <tbody id="tabla-categorias-body">
-              <tr><td colspan="2" class="empty">Cargando…</td></tr>
-            </tbody>
-            <tfoot>
-              <tr class="fila-total">
-                <td>Total</td>
-                <td class="ta-right" id="total-categorias">$0.00</td>
-              </tr>
-            </tfoot>
-          </table>
+      <div class="saldo-detalle">
+        <div class="saldo-detalle-row">
+          <span>Ingresado en el periodo</span>
+          <span class="txt-positivo" id="kpi-ingresado">$0.00</span>
+        </div>
+        <div class="saldo-detalle-row">
+          <span>Gastado en el periodo</span>
+          <span class="txt-negativo" id="kpi-gastado">$0.00</span>
         </div>
       </div>
     </section>
 
-    <section class="card">
+    <section class="card categoria-card">
+      <div class="card-title">Gasto por categoría</div>
+      <div class="categoria-chart-wrap">
+        <canvas id="chart-categoria"></canvas>
+      </div>
+      <div id="tabla-categorias-body"></div>
+      <div class="resumen-categoria-total">
+        <span>Total</span>
+        <span id="total-categorias">$0.00</span>
+      </div>
+    </section>
+
+    <section class="card movimientos-card">
       <div class="card-title-row">
         <div class="card-title">Movimientos</div>
         <div class="table-filters">
@@ -142,8 +114,13 @@
           </select>
         </div>
       </div>
+
       <div class="table-wrap">
         <table>
+          <colgroup>
+            <col style="width:14%"><col style="width:12%"><col style="width:16%">
+            <col style="width:13%"><col style="width:24%"><col style="width:9%"><col style="width:9%"><col style="width:3%">
+          </colgroup>
           <thead>
             <tr>
               <th>Fecha</th>
@@ -161,12 +138,19 @@
           </tbody>
         </table>
       </div>
+
+      <div class="mov-cards" id="tabla-cards"></div>
+
+      <div class="pag-bar">
+        <div class="pag-info" id="pag-info"></div>
+        <div class="pag-numbers" id="pag-numbers"></div>
+        <div class="pag-simple" id="pag-simple"></div>
+      </div>
     </section>
 
   </main>
 </div>
 
-<!-- Modal para registrar movimiento manualmente -->
 <div id="modal" class="modal hidden">
   <div class="modal-card">
     <div class="modal-head">
@@ -175,8 +159,8 @@
     </div>
     <form id="form-nuevo">
       <div class="seg-tipo">
-        <button type="button" data-tipo="gasto" class="seg-btn active">🧾 Gasto</button>
-        <button type="button" data-tipo="ingreso" class="seg-btn">💰 Ingresar saldo</button>
+        <button type="button" data-tipo="gasto" class="seg-btn active">Gasto</button>
+        <button type="button" data-tipo="ingreso" class="seg-btn">Ingresar saldo</button>
       </div>
       <label>Monto
         <input type="number" step="0.01" min="0.01" name="monto" required placeholder="0.00" />
